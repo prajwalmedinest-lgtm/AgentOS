@@ -1,12 +1,6 @@
 import streamlit as st
 import os
-from dotenv import load_dotenv
 import json
-
-# ---------------------------
-# LOAD ENV
-# ---------------------------
-load_dotenv()
 
 # ---------------------------
 # PAGE CONFIG
@@ -27,13 +21,13 @@ if "workflow_name" not in st.session_state:
     st.session_state.workflow_name = "Untitled Workflow"
 
 if "api_key" not in st.session_state:
-    st.session_state.api_key = os.getenv("GEMINI_API_KEY", "")
+    st.session_state.api_key = ""
 
 if "api_key_set" not in st.session_state:
-    st.session_state.api_key_set = bool(st.session_state.api_key)
+    st.session_state.api_key_set = False
 
 # ---------------------------
-# UI STYLING (CLEAN PREMIUM)
+# UI STYLING
 # ---------------------------
 st.markdown("""
 <style>
@@ -90,7 +84,7 @@ st.markdown('<div class="title">⚡ Agent-OS</div>', unsafe_allow_html=True)
 st.markdown('<div class="subtitle">AI Workflow Builder</div>', unsafe_allow_html=True)
 
 # ---------------------------
-# API KEY INPUT (SECURE)
+# API KEY INPUT (NO DOTENV)
 # ---------------------------
 with st.container():
     st.markdown('<div class="card">', unsafe_allow_html=True)
@@ -222,7 +216,6 @@ def run_step(step, input_text):
     if not api_key:
         return "❌ API key not set"
 
-    # Replace with real Gemini API later
     prompt = step["prompt"].replace("{{input}}", input_text)
 
     return f"{step['name']} OUTPUT → {prompt[:200]}"
