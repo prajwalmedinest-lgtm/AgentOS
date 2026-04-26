@@ -1,165 +1,246 @@
 import streamlit as st
 import os
 from dotenv import load_dotenv
+import json
 
-# -----------------------------
-# LOAD ENV (SECURE API KEY)
-# -----------------------------
+# ---------------------------
+# LOAD ENV
+# ---------------------------
 load_dotenv()
-API_KEY = os.getenv("GEMINI_API_KEY")
 
-# -----------------------------
+# ---------------------------
 # PAGE CONFIG
-# -----------------------------
+# ---------------------------
 st.set_page_config(
     page_title="Agent-OS",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
 
-# -----------------------------
-# CUSTOM CSS (PREMIUM UI)
-# -----------------------------
+# ---------------------------
+# SESSION STATE INIT
+# ---------------------------
+if "steps" not in st.session_state:
+    st.session_state.steps = []
+
+if "workflow_name" not in st.session_state:
+    st.session_state.workflow_name = "Untitled Workflow"
+
+if "api_key" not in st.session_state:
+    st.session_state.api_key = os.getenv("GEMINI_API_KEY", "")
+
+if "api_key_set" not in st.session_state:
+    st.session_state.api_key_set = bool(st.session_state.api_key)
+
+# ---------------------------
+# UI STYLING (CLEAN PREMIUM)
+# ---------------------------
 st.markdown("""
 <style>
-/* GLOBAL */
-html, body, [class*="css"] {
-    font-family: 'Inter', sans-serif;
+html, body {
+    font-family: Inter, sans-serif;
 }
-
-/* BACKGROUND */
 .stApp {
-    background: linear-gradient(135deg, #0b0f1a 0%, #111827 100%);
-    color: #e5e7eb;
+    background: #0e1117;
+    color: #e6e6e6;
 }
-
-/* REMOVE DEFAULT HEADER */
 header {visibility: hidden;}
 
-/* CARD STYLE */
-.card {
-    background: rgba(255,255,255,0.04);
-    border-radius: 16px;
-    padding: 20px;
-    margin-bottom: 20px;
-    border: 1px solid rgba(255,255,255,0.08);
-}
-
-/* BUTTON */
-.stButton button {
-    background: linear-gradient(135deg, #6366f1, #8b5cf6);
-    color: white;
-    border-radius: 10px;
-    border: none;
-    padding: 10px 18px;
-    font-weight: 500;
-}
-
-/* INPUTS */
-textarea, input {
-    background-color: rgba(255,255,255,0.05) !important;
-    color: white !important;
-    border-radius: 10px !important;
-    border: 1px solid rgba(255,255,255,0.08) !important;
-}
-
-/* LABELS */
-label {
-    color: #9ca3af !important;
-}
-
-/* TITLE */
 .title {
-    font-size: 32px;
+    font-size: 34px;
     font-weight: 600;
 }
-
-/* SUBTEXT */
 .subtitle {
     color: #9ca3af;
-    margin-bottom: 20px;
+    margin-bottom: 25px;
+}
+
+.card {
+    background: #161b22;
+    border-radius: 14px;
+    padding: 18px;
+    margin-bottom: 18px;
+    border: 1px solid #2a2f3a;
+}
+
+textarea, input, select {
+    background-color: #0e1117 !important;
+    color: #e6e6e6 !important;
+    border-radius: 8px !important;
+    border: 1px solid #2a2f3a !important;
+}
+
+.stButton button {
+    background: #2563eb;
+    border-radius: 8px;
+    border: none;
+    color: white;
+    padding: 8px 16px;
+}
+.stButton button:hover {
+    background: #1d4ed8;
 }
 </style>
 """, unsafe_allow_html=True)
 
-# -----------------------------
-# STATE
-# -----------------------------
-if "steps" not in st.session_state:
-    st.session_state.steps = []
-
-# -----------------------------
+# ---------------------------
 # HEADER
-# -----------------------------
+# ---------------------------
 st.markdown('<div class="title">⚡ Agent-OS</div>', unsafe_allow_html=True)
 st.markdown('<div class="subtitle">AI Workflow Builder</div>', unsafe_allow_html=True)
 
-# -----------------------------
-# GLOBAL INPUT
-# -----------------------------
+# ---------------------------
+# API KEY INPUT (SECURE)
+# ---------------------------
 with st.container():
     st.markdown('<div class="card">', unsafe_allow_html=True)
 
-    global_input = st.text_area("Global Input", placeholder="Enter your base input...")
+    col1, col2 = st.columns([6,1])
 
-    run = st.button("▶ Run Workflow")
+    with col1:
+        if not st.session_state.api_key_set:
+            api_input = st.text_input(
+                "Enter Gemini API Key",
+                type="password",
+                placeholder="Paste your API key..."
+            )
+        else:
+            st.success("API Key loaded securely")
+
+    with col2:
+        if not st.session_state.api_key_set:
+            if st.button("Save Key"):
+                if api_input:
+                    st.session_state.api_key = api_input
+                    st.session_state.api_key_set = True
+                    st.rerun()
+        else:
+            if st.button("Reset"):
+                st.session_state.api_key = ""
+                st.session_state.api_key_set = False
+                st.rerun()
 
     st.markdown('</div>', unsafe_allow_html=True)
 
-# -----------------------------
-# ADD STEP BUTTON
-# -----------------------------
-col1, col2 = st.columns([1,6])
+# ---------------------------
+# TOP BAR
+# ---------------------------
+col1, col2, col3 = st.columns([4,1,1])
+
 with col1:
-    if st.button("+ Add Step"):
-        st.session_state.steps.append({
-            "name": f"Step {len(st.session_state.steps)+1}",
-            "prompt": "",
-            "model": "gemini-pro"
-        })
+    st.session_state.workflow_name = st.text_input(
+        "Workflow Name",
+        st.session_state.workflow_name
+    )
 
-# -----------------------------
-# STEPS UI (CARD BASED)
-# -----------------------------
+with col2:
+    if st.button("Export"):
+        data = {
+            "name": st.session_state.workflow_name,
+            "steps": st.session_state.steps
+        }
+        st.download_button(
+            "Download JSON",
+            data=json.dumps(data, indent=2),
+            file_name="workflow.json"
+        )
+
+with col3:
+    uploaded = st.file_uploader("Import", type="json")
+    if uploaded:
+        data = json.load(uploaded)
+        st.session_state.steps = data.get("steps", [])
+        st.session_state.workflow_name = data.get("name", "Imported Workflow")
+        st.rerun()
+
+# ---------------------------
+# GLOBAL INPUT
+# ---------------------------
+st.markdown('<div class="card">', unsafe_allow_html=True)
+
+global_input = st.text_area(
+    "Global Input",
+    placeholder="This input flows through all steps..."
+)
+
+run_workflow = st.button("▶ Run Workflow")
+
+st.markdown('</div>', unsafe_allow_html=True)
+
+# ---------------------------
+# ADD STEP
+# ---------------------------
+if st.button("+ Add Step"):
+    st.session_state.steps.append({
+        "name": f"Step {len(st.session_state.steps)+1}",
+        "prompt": "",
+        "model": "gemini-pro"
+    })
+    st.rerun()
+
+# ---------------------------
+# STEP UI
+# ---------------------------
 for i, step in enumerate(st.session_state.steps):
-    with st.container():
-        st.markdown('<div class="card">', unsafe_allow_html=True)
+    st.markdown('<div class="card">', unsafe_allow_html=True)
 
-        col1, col2 = st.columns([6,1])
+    col1, col2 = st.columns([6,1])
 
-        with col1:
-            step["name"] = st.text_input("Step Name", step["name"], key=f"name_{i}")
-        with col2:
-            if st.button("✕", key=f"del_{i}"):
-                st.session_state.steps.pop(i)
-                st.rerun()
-
-        step["prompt"] = st.text_area(
-            "Prompt",
-            step["prompt"],
-            placeholder="Write your instruction...",
-            key=f"prompt_{i}"
+    with col1:
+        step["name"] = st.text_input(
+            "Step Name",
+            step["name"],
+            key=f"name_{i}"
         )
 
-        step["model"] = st.selectbox(
-            "Model",
-            ["gemini-pro", "gemini-1.5-pro"],
-            key=f"model_{i}"
-        )
+    with col2:
+        if st.button("✕", key=f"delete_{i}"):
+            st.session_state.steps.pop(i)
+            st.rerun()
 
-        st.markdown('</div>', unsafe_allow_html=True)
+    step["prompt"] = st.text_area(
+        "Prompt",
+        step["prompt"],
+        placeholder="Use {{input}} to pass previous output",
+        key=f"prompt_{i}"
+    )
 
-# -----------------------------
-# RUN LOGIC (SIMULATION)
-# -----------------------------
-if run:
-    st.markdown("### Output")
+    step["model"] = st.selectbox(
+        "Model",
+        ["gemini-pro", "gemini-1.5-pro"],
+        key=f"model_{i}"
+    )
 
-    current_input = global_input
+    st.markdown('</div>', unsafe_allow_html=True)
+
+# ---------------------------
+# EXECUTION ENGINE
+# ---------------------------
+def run_step(step, input_text):
+    api_key = st.session_state.api_key
+
+    if not api_key:
+        return "❌ API key not set"
+
+    # Replace with real Gemini API later
+    prompt = step["prompt"].replace("{{input}}", input_text)
+
+    return f"{step['name']} OUTPUT → {prompt[:200]}"
+
+# ---------------------------
+# RUN WORKFLOW
+# ---------------------------
+if run_workflow:
+    if not global_input:
+        st.warning("Please enter global input")
+        st.stop()
+
+    st.markdown("## Output")
+
+    current = global_input
 
     for step in st.session_state.steps:
-        # simulate processing
-        output = f"[{step['name']}] → Processed: {current_input}"
+        output = run_step(step, current)
 
         st.markdown(f"""
         <div class="card">
@@ -168,4 +249,4 @@ if run:
         </div>
         """, unsafe_allow_html=True)
 
-        current_input = output
+        current = output
