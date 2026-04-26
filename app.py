@@ -1,104 +1,172 @@
 # app.py
+# Agent-OS — Premium Streamlit AI Workflow Builder (fixed, production-ready)
 
 import streamlit as st
 import json
 import time
-import google.generativeai as genai
+from typing import List, Dict
 
-# -------------------- CONFIG --------------------
-st.set_page_config(page_title="Agent-OS", layout="wide")
+# Optional import guard for Gemini
+try:
+    import google.generativeai as genai
+    GEMINI_AVAILABLE = True
+except Exception:
+    GEMINI_AVAILABLE = False
 
-# -------------------- CUSTOM CSS --------------------
+# -------------------- PAGE CONFIG --------------------
+st.set_page_config(
+    page_title="Agent-OS",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# -------------------- THEME (CLEAN PREMIUM GRADIENT) --------------------
 st.markdown("""
 <style>
-/* Background */
-html, body, [data-testid="stAppViewContainer"] {
-    background-color: #0f172a;
-    color: #e2e8f0;
-    font-family: 'Inter', sans-serif;
+
+/* ---------- ROOT THEME ---------- */
+:root {
+    --bg: #0b1220;
+    --bg-soft: #0f172a;
+    --card: rgba(255,255,255,0.06);
+    --border: rgba(255,255,255,0.08);
+    --text: #e5e7eb;
+    --muted: #9ca3af;
+    --accent: #6366f1;
+}
+
+/* Background gradient */
+[data-testid="stAppViewContainer"] {
+    background: radial-gradient(circle at 20% 20%, #1e293b 0%, #0b1220 40%, #020617 100%);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
 /* Sidebar */
 [data-testid="stSidebar"] {
-    background-color: #020617;
-    border-right: 1px solid rgba(255,255,255,0.05);
+    background: #020617;
+    border-right: 1px solid var(--border);
 }
 
-/* Card UI */
+/* ---------- CARD ---------- */
 .card {
-    background: rgba(255,255,255,0.05);
-    padding: 20px;
-    border-radius: 18px;
-    margin-bottom: 20px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 18px;
+    margin-bottom: 18px;
     backdrop-filter: blur(10px);
-    border: 1px solid rgba(255,255,255,0.08);
-    box-shadow: 0 10px 30px rgba(0,0,0,0.4);
-    transition: all 0.2s ease;
-}
-
-.card:hover {
-    transform: translateY(-2px);
-    border: 1px solid rgba(255,255,255,0.15);
-}
-
-/* Buttons */
-.stButton>button {
-    border-radius: 12px;
-    padding: 10px 16px;
-    background: linear-gradient(135deg, #6366f1, #8b5cf6);
-    color: white;
-    border: none;
     transition: 0.2s ease;
 }
+.card:hover {
+    transform: translateY(-2px);
+}
 
+/* ---------- BUTTON ---------- */
+.stButton>button {
+    border-radius: 10px;
+    background: linear-gradient(135deg, #6366f1, #4f46e5);
+    border: none;
+    color: white;
+    padding: 10px 16px;
+    transition: 0.2s ease;
+}
 .stButton>button:hover {
-    transform: scale(1.03);
-    opacity: 0.9;
+    transform: translateY(-1px);
 }
 
-/* Inputs */
-textarea, input {
-    border-radius: 10px !important;
+/* ---------- INPUTS ---------- */
+textarea, input, select {
     background: rgba(255,255,255,0.05) !important;
-    color: white !important;
+    border: 1px solid var(--border) !important;
+    color: var(--text) !important;
+    border-radius: 10px !important;
 }
 
-/* Header */
+/* Titles */
 .title {
-    font-size: 32px;
+    font-size: 30px;
     font-weight: 700;
-    margin-bottom: 10px;
+}
+.subtitle {
+    color: var(--muted);
+    margin-bottom: 20px;
 }
 
-.subtitle {
-    color: #94a3b8;
-    margin-bottom: 30px;
+/* Expander */
+.streamlit-expanderHeader {
+    font-weight: 600;
 }
+
 </style>
 """, unsafe_allow_html=True)
 
 # -------------------- SESSION STATE --------------------
 if "workflow" not in st.session_state:
-    st.session_state.workflow = []
+    st.session_state.workflow: List[Dict] = []
 
 if "api_key" not in st.session_state:
     st.session_state.api_key = ""
 
-# -------------------- GEMINI SETUP --------------------
-def call_gemini(prompt):
+if "run_outputs" not in st.session_state:
+    st.session_state.run_outputs = {}
+
+if "user_input" not in st.session_state:
+    st.session_state.user_input = ""
+
+# -------------------- GEMINI FUNCTION --------------------
+def call_gemini(prompt: str) -> str:
+    if not GEMINI_AVAILABLE:
+        return "❌ google-generativeai not installed."
+
     try:
         genai.configure(api_key=st.session_state.api_key)
         model = genai.GenerativeModel("gemini-1.5-flash")
         response = model.generate_content(prompt)
-        return response.text
+        return response.text if hasattr(response, "text") else str(response)
     except Exception as e:
-        # Retry once
+        # retry once
         try:
             time.sleep(1)
             response = model.generate_content(prompt)
-            return response.text
-        except Exception as e:
-            return f"❌ Error: {str(e)}"
+            return response.text if hasattr(response, "text") else str(response)
+        except Exception as e2:
+            return f"❌ Error: {str(e2)}"
+
+# -------------------- WORKFLOW HELPERS --------------------
+def add_step():
+    st.session_state.workflow.append({
+        "id": int(time.time()*1000),
+        "name": f"Step {len(st.session_state.workflow)+1}",
+        "model": "Gemini",
+        "input": "",
+        "output": ""
+    })
+
+def reset_workflow():
+    st.session_state.workflow = []
+    st.session_state.run_outputs = {}
+
+def load_template(name: str):
+    if name == "Research Agent":
+        st.session_state.workflow = [
+            {"id":1,"name":"Analyze Topic","model":"Gemini","input":"Analyze this topic deeply: {{input}}","output":""},
+            {"id":2,"name":"Insights","model":"Gemini","input":"Extract insights from: {{prev_output}}","output":""},
+            {"id":3,"name":"Summary","model":"Gemini","input":"Summarize: {{prev_output}}","output":""}
+        ]
+
+    elif name == "Startup Idea Generator":
+        st.session_state.workflow = [
+            {"id":1,"name":"Generate Ideas","model":"Gemini","input":"Generate startup ideas for {{input}}","output":""},
+            {"id":2,"name":"Refine","model":"Gemini","input":"Refine this: {{prev_output}}","output":""},
+            {"id":3,"name":"Pitch","model":"Gemini","input":"Create a pitch: {{prev_output}}","output":""}
+        ]
+
+    elif name == "Code Explainer":
+        st.session_state.workflow = [
+            {"id":1,"name":"Explain","model":"Gemini","input":"Explain this code: {{input}}","output":""},
+            {"id":2,"name":"Simplify","model":"Gemini","input":"Simplify: {{prev_output}}","output":""}
+        ]
 
 # -------------------- SIDEBAR --------------------
 with st.sidebar:
@@ -106,108 +174,114 @@ with st.sidebar:
 
     st.session_state.api_key = st.text_input("Gemini API Key", type="password")
 
+    st.markdown("### Workflow")
     if st.button("➕ Add Step"):
-        st.session_state.workflow.append({
-            "id": len(st.session_state.workflow),
-            "name": f"Step {len(st.session_state.workflow)+1}",
-            "model": "Gemini",
-            "input": "",
-            "output": ""
-        })
+        add_step()
 
-    # -------- Templates --------
-    template = st.selectbox("Load Template", ["None", "Research Agent", "Startup Idea Generator", "Code Explainer"])
+    template = st.selectbox(
+        "Templates",
+        ["None", "Research Agent", "Startup Idea Generator", "Code Explainer"]
+    )
+    if st.button("Load Template"):
+        load_template(template)
 
-    if st.button("Apply Template"):
-        if template == "Research Agent":
-            st.session_state.workflow = [
-                {"id":0,"name":"Topic Analysis","model":"Gemini","input":"Analyze {{input}} deeply","output":""},
-                {"id":1,"name":"Key Insights","model":"Gemini","input":"Extract key insights from {{prev_output}}","output":""},
-                {"id":2,"name":"Summary","model":"Gemini","input":"Summarize {{prev_output}}","output":""}
-            ]
+    st.markdown("---")
 
-        elif template == "Startup Idea Generator":
-            st.session_state.workflow = [
-                {"id":0,"name":"Idea Generation","model":"Gemini","input":"Generate startup ideas for {{input}}","output":""},
-                {"id":1,"name":"Validation","model":"Gemini","input":"Validate {{prev_output}}","output":""},
-                {"id":2,"name":"Pitch","model":"Gemini","input":"Create pitch for {{prev_output}}","output":""}
-            ]
-
-        elif template == "Code Explainer":
-            st.session_state.workflow = [
-                {"id":0,"name":"Explain Code","model":"Gemini","input":"Explain this code: {{input}}","output":""},
-                {"id":1,"name":"Simplify","model":"Gemini","input":"Simplify explanation: {{prev_output}}","output":""}
-            ]
-
-    # -------- Export --------
+    # Export
     st.download_button(
-        "Export Workflow",
-        json.dumps(st.session_state.workflow, indent=2),
-        file_name="workflow.json"
+        "Export JSON",
+        data=json.dumps(st.session_state.workflow, indent=2),
+        file_name="agent_os_workflow.json"
     )
 
-    # -------- Import --------
-    uploaded_file = st.file_uploader("Import Workflow")
-    if uploaded_file:
-        st.session_state.workflow = json.load(uploaded_file)
+    # Import
+    uploaded = st.file_uploader("Import JSON", type=["json"])
+    if uploaded:
+        try:
+            st.session_state.workflow = json.load(uploaded)
+            st.success("Workflow loaded")
+        except:
+            st.error("Invalid JSON")
 
-    # -------- Reset --------
     if st.button("Reset"):
-        st.session_state.workflow = []
+        reset_workflow()
 
-# -------------------- MAIN UI --------------------
-st.markdown('<div class="title">🚀 Agent-OS</div>', unsafe_allow_html=True)
-st.markdown('<div class="subtitle">Build AI workflows visually</div>', unsafe_allow_html=True)
+# -------------------- MAIN HEADER --------------------
+st.markdown('<div class="title">Agent-OS</div>', unsafe_allow_html=True)
+st.markdown('<div class="subtitle">AI Workflow Builder</div>', unsafe_allow_html=True)
+
+# Global Input
+st.session_state.user_input = st.text_area(
+    "Global Input (used in {{input}})",
+    st.session_state.user_input
+)
 
 # -------------------- RUN WORKFLOW --------------------
 if st.button("▶ Run Workflow"):
     if not st.session_state.workflow:
-        st.warning("⚠️ Add steps before running.")
+        st.warning("Add steps first")
     elif not st.session_state.api_key:
-        st.warning("⚠️ Enter API key.")
+        st.warning("Enter API key")
     else:
         prev_output = ""
-        for step in st.session_state.workflow:
-            prompt = step["input"].replace("{{prev_output}}", prev_output)
+        st.session_state.run_outputs = {}
 
-            output = call_gemini(prompt)
+        for i, step in enumerate(st.session_state.workflow):
+            prompt = step["input"]
+            prompt = prompt.replace("{{input}}", st.session_state.user_input)
+            prompt = prompt.replace("{{prev_output}}", prev_output)
 
-            step["output"] = output
+            with st.spinner(f"Running {step['name']}..."):
+                output = call_gemini(prompt)
+
             prev_output = output
+            st.session_state.run_outputs[step["id"]] = {
+                "prompt": prompt,
+                "output": output
+            }
 
-# -------------------- WORKFLOW CARDS --------------------
+# -------------------- WORKFLOW UI --------------------
 for i, step in enumerate(st.session_state.workflow):
-    with st.container():
-        st.markdown('<div class="card">', unsafe_allow_html=True)
+    st.markdown('<div class="card">', unsafe_allow_html=True)
 
-        col1, col2 = st.columns([4,1])
+    col1, col2 = st.columns([5,1])
 
-        with col1:
-            step["name"] = st.text_input("Step Name", step["name"], key=f"name_{i}")
-            step["input"] = st.text_area("Prompt", step["input"], key=f"input_{i}")
+    with col1:
+        step["name"] = st.text_input(
+            "Step Name",
+            value=step["name"],
+            key=f"name_{step['id']}"
+        )
 
-            step["model"] = st.selectbox(
-                "Model",
-                ["Gemini", "OpenAI", "Claude"],
-                index=0,
-                key=f"model_{i}"
-            )
+        step["input"] = st.text_area(
+            "Prompt",
+            value=step["input"],
+            key=f"input_{step['id']}"
+        )
 
-        with col2:
-            if st.button("🗑 Delete", key=f"delete_{i}"):
-                st.session_state.workflow.pop(i)
-                st.rerun()
+        step["model"] = st.selectbox(
+            "Model",
+            ["Gemini", "OpenAI", "Claude"],
+            key=f"model_{step['id']}"
+        )
 
-        st.markdown('</div>', unsafe_allow_html=True)
+    with col2:
+        if st.button("Delete", key=f"del_{step['id']}"):
+            st.session_state.workflow.pop(i)
+            st.rerun()
 
-# -------------------- OUTPUT DISPLAY --------------------
-st.markdown("## 📊 Results")
+    st.markdown('</div>', unsafe_allow_html=True)
+
+# -------------------- OUTPUT --------------------
+st.markdown("## Results")
 
 for step in st.session_state.workflow:
-    if step["output"]:
-        with st.expander(step["name"]):
-            st.markdown("**Prompt:**")
-            st.code(step["input"])
+    if step["id"] in st.session_state.run_outputs:
+        data = st.session_state.run_outputs[step["id"]]
 
-            st.markdown("**Output:**")
-            st.write(step["output"])
+        with st.expander(step["name"]):
+            st.markdown("**Prompt**")
+            st.code(data["prompt"])
+
+            st.markdown("**Output**")
+            st.write(data["output"])
